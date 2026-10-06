@@ -8,6 +8,7 @@ import re
 import sys
 from collections.abc import Sequence
 
+from skogai import links
 from skogai.env import AREAS, check, resolve
 from skogai.env.inventory import atuin_var_names, relevant
 
@@ -67,6 +68,14 @@ def _cmd_env_check() -> int:
     return 1 if errors else 0
 
 
+def _cmd_link(args: argparse.Namespace) -> int:
+    try:
+        return links.run(args.manifest, args.mode)
+    except (OSError, ValueError) as e:
+        print(f"skogai link: {e}", file=sys.stderr)
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="skogai", description="skogai command line")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -83,6 +92,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_env.add_argument("action", nargs="?", choices=["check"], help="check the environment")
     p_env.add_argument("--explain", action="store_true", help="show each variable and its tier")
     p_env.set_defaults(func=_cmd_env)
+
+    p_link = sub.add_parser("link", help="link repo config into place, as listed in a manifest")
+    p_link.add_argument("mode", nargs="?", default="link", choices=links.MODES,
+                        help="link (default) creates missing links; check only reports")
+    p_link.add_argument("--manifest", default="links.txt", help="manifest file (default: links.txt)")
+    p_link.set_defaults(func=_cmd_link)
 
     return parser
 
