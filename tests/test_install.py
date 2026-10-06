@@ -48,7 +48,9 @@ class InstallTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def write_dash(self, path, text):
-        with open(os.path.join(self.dash, path), "w") as f:
+        full = os.path.join(self.dash, path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as f:
             f.write(text)
 
     def commit(self, message):
@@ -167,6 +169,23 @@ class InstallTests(unittest.TestCase):
         with GitSource(self.dash) as s:
             with self.assertRaises(store.StoreError):
                 store.init(os.path.join(self.root, "other"), s, out=lambda _: None)
+
+
+    def test_executable_bit_survives_install(self):
+        self.write_dash("scripts/run.sh", "#!/bin/sh\necho hi\n")
+        os.chmod(os.path.join(self.dash, "scripts/run.sh"), 0o755)
+        self.write_dash("config.defaults.json", json.dumps({"files": [
+            {"source": "fish/config.fish", "install": {"env": "SKOGAI_CONFIG_FISH_DIR", "default": "/unused"}},
+            {"source": "scripts/run.sh", "install": {"xdg": "bin", "default": "/unused"}},
+        ]}))
+        self.commit("with script")
+        store_dir = os.path.join(self.root, "modes", ".skogai")
+        with GitSource(self.dash) as s:
+            store.init(store_dir, s, out=lambda _: None)
+        self.env = {"SKOGAI_CONFIG_EXAMPLE_DIR": os.path.join(self.root, "sandbox")}
+        install.install(store_dir, env=self.env, apply=True, out=lambda _: None)
+        target = os.path.join(self.root, "sandbox", "bin", "run.sh")
+        self.assertEqual(os.stat(target).st_mode & 0o777, 0o755)
 
 
 if __name__ == "__main__":

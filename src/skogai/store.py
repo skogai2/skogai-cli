@@ -24,6 +24,7 @@ DEFAULTS_PATH = "config.defaults.json"
 CONFIG_NAME = "config.json"
 DEFAULTS_NAME = "config.defaults.json"
 PINS_NAME = "pins.json"
+GITIGNORE = "config.local.json\ninstalls.json\n"
 
 Out = Callable[[str], None]
 
@@ -77,10 +78,11 @@ def read_file(path: str) -> bytes | None:
         return f.read()
 
 
-def write_file(path: str, data: bytes) -> None:
+def write_file(path: str, data: bytes, mode: int = 0o644) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "wb") as f:
         f.write(data)
+    os.chmod(path, mode)
 
 
 def write_json(path: str, data: dict) -> None:
@@ -98,6 +100,8 @@ def init(store: str, source: GitSource, ref: str = "HEAD", out: Out = print) -> 
     if os.path.exists(os.path.join(store, CONFIG_NAME)):
         raise StoreError(f"{store} is already initialised; use skogai update")
 
+    # TODO: ref defaults to HEAD, so a first install pins whatever is on GitHub
+    # at that moment. Pass an explicit --ref for a first pin (docs/DECISIONS.md).
     sha = source.resolve(ref)
     defaults_raw = source.read(sha, DEFAULTS_PATH)
     sources = parse_defaults(defaults_raw)
@@ -105,13 +109,15 @@ def init(store: str, source: GitSource, ref: str = "HEAD", out: Out = print) -> 
     pins = {}
     for src in sources:
         data = source.read(sha, src)
-        write_file(os.path.join(store, src), data)
+        write_file(os.path.join(store, src), data, source.mode(sha, src))
         pins[src] = blob_sha(data)
         out(f"copied       {src}")
 
     write_file(os.path.join(store, DEFAULTS_NAME), defaults_raw)
     write_json(os.path.join(store, PINS_NAME), {"files": pins})
     write_json(os.path.join(store, CONFIG_NAME), {"base": {"url": source.url, "sha": sha}})
+    # Machine-local files: never committed.
+    write_file(os.path.join(store, ".gitignore"), GITIGNORE.encode())
     out(f"initialised {store} at {sha[:12]}")
     return 0
 
@@ -164,7 +170,7 @@ def update(
             out(f"ADD          {src}")
             changed += 1
             if apply:
-                write_file(local_path, data)
+                write_file(local_path, data, source.mode(sha, src))
                 pins[src] = blob_sha(data)
             continue
 
@@ -178,7 +184,13 @@ def update(
             continue
 
         data = source.read(sha, src)
+        target_mode = source.mode(sha, src)
         if blob_sha(data) == pinned:
+            if os.stat(local_path).st_mode & 0o777 != target_mode:
+                out(f"MODE         {src}: executable bit differs from dash-skogai")
+                changed += 1
+                if apply:
+                    os.chmod(local_path, target_mode)
             continue
 
         out(f"UPDATE       {src}")
@@ -186,7 +198,7 @@ def update(
             out(f"  {line}")
         changed += 1
         if apply:
-            write_file(local_path, data)
+            write_file(local_path, data, target_mode)
             pins[src] = blob_sha(data)
 
     if apply:

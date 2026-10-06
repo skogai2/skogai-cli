@@ -59,6 +59,13 @@ class GitSource:
             raise SourceError(f"unknown ref '{ref}' in {self.url}") from None
         return out.decode().strip()
 
+    def mode(self, sha: str, path: str) -> int:
+        """The file mode at commit sha: 0o755 if executable, else 0o644."""
+        out = self._git("ls-tree", sha, "--", path).decode()
+        if not out:
+            raise SourceError(f"{path} does not exist at {sha[:12]}")
+        return 0o755 if out.split()[0] == "100755" else 0o644
+
     def read(self, sha: str, path: str) -> bytes:
         """The contents of path at commit sha."""
         try:

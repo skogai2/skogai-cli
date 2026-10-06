@@ -1,0 +1,12 @@
+{
+  "files": [
+    {
+      "source": "scripts/hello.sh",
+      "install": {
+        "env": "SKOGAI_EXAMPLE_BIN_DIR",
+        "xdg": "bin",
+        "default": "~/.local/bin"
+      }
+    }
+  ]
+}

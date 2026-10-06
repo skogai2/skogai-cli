@@ -80,5 +80,6 @@ never touch the real config. A variable named in `install.env` still wins.
 
 ## Status
 
-Built: `init`, `update`, `install`. Not built: layered config lookup
-(`config get --source`) and the global `/skogai` store.
+Built: `init`, `update`, `install`, `config get`. Not built: the global `/skogai`
+store, and `files` from an overlay (see DECISIONS.md O1). Decisions and open
+questions are in DECISIONS.md.

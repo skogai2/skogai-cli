@@ -41,7 +41,9 @@ class StoreTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def write_dash(self, path, text):
-        with open(os.path.join(self.dash, path), "w") as f:
+        full = os.path.join(self.dash, path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as f:
             f.write(text)
 
     def read(self, path):
@@ -151,6 +153,28 @@ class StoreTests(unittest.TestCase):
     def test_update_before_init_says_so(self):
         with self.assertRaises(store.StoreError):
             self.update()
+
+
+    def test_mode_only_change_upstream_is_applied(self):
+        self.write_dash("scripts/run.sh", "#!/bin/sh\n")
+        os.chmod(os.path.join(self.dash, "scripts/run.sh"), 0o755)
+        self.write_dash("config.defaults.json", '{"files": [{"source": "scripts/run.sh"}]}\n')
+        commit_all(self.dash, "exec")
+        with self.src() as s:
+            store.init(self.store, s, out=lambda _: None)
+        local = os.path.join(self.store, "scripts/run.sh")
+        self.assertEqual(os.stat(local).st_mode & 0o777, 0o755)
+
+        os.chmod(os.path.join(self.dash, "scripts/run.sh"), 0o644)
+        sha2 = commit_all(self.dash, "not executable any more")
+        self.assertEqual(self.update(apply=True, ref=sha2), 0)
+        self.assertEqual(os.stat(local).st_mode & 0o777, 0o644)
+        self.assertTrue(any(line.startswith("MODE") for line in self.lines))
+
+    def test_store_gitignores_machine_local_files(self):
+        self.init()
+        self.assertEqual(self.read(os.path.join(self.store, ".gitignore")),
+                         "config.local.json\ninstalls.json\n")
 
 
 if __name__ == "__main__":

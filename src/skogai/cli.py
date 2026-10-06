@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
 from collections.abc import Sequence
 
-from skogai import install, links, store
+from skogai import config, install, links, store
 from skogai.env import AREAS, check, resolve
 from skogai.env.inventory import atuin_var_names, relevant
 from skogai.source import DASH_SKOGAI_URL, GitSource, SourceError
@@ -96,6 +97,39 @@ def _cmd_update(args: argparse.Namespace) -> int:
     )
 
 
+def _fmt(value) -> str:
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+def _cmd_config_get(args: argparse.Namespace) -> int:
+    try:
+        layers = config.load_layers(args.store, os.environ)
+        if args.layer:
+            value = config.layer_value(layers, args.layer, args.key)
+            if value is None:
+                print(f"skogai config: {args.key} is not set in layer '{args.layer}'", file=sys.stderr)
+                return 1
+            print(_fmt(value))
+            return 0
+
+        hits = config.get(layers, args.key)
+    except (OSError, store.StoreError, config.ConfigError) as e:
+        print(f"skogai config: {e}", file=sys.stderr)
+        return 2
+
+    if not hits:
+        print(f"skogai config: {args.key or 'config'} is not set", file=sys.stderr)
+        return 1
+    single = len(hits) == 1 and hits[0][0] == args.key
+    for key, value, layer in hits:
+        tail = f"\t[{layer}]" if args.source else ""
+        if single:
+            print(f"{_fmt(value)}{tail}")
+        else:
+            print(f"{key} = {_fmt(value)}{tail}")
+    return 0
+
+
 def _cmd_install(args: argparse.Namespace) -> int:
     try:
         return install.install(args.store, apply=args.apply)
@@ -153,6 +187,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_install.add_argument("--store", default=".skogai", help="store directory (default: ./.skogai)")
     p_install.add_argument("--apply", action="store_true", help="write the changes")
     p_install.set_defaults(func=_cmd_install)
+
+    p_config = sub.add_parser("config", help="read the layered config")
+    config_sub = p_config.add_subparsers(dest="config_command", required=True)
+    p_get = config_sub.add_parser(
+        "get",
+        help="print a value, or every value when no key is given",
+    )
+    p_get.add_argument("key", nargs="?", help="dotted key, e.g. base.sha")
+    p_get.add_argument("--store", default=".skogai", help="store directory (default: ./.skogai)")
+    p_get.add_argument("--source", action="store_true", help="also print the layer that set it")
+    p_get.add_argument("--layer", choices=config.LAYER_ORDER,
+                       help="print the raw value from one layer instead")
+    p_get.set_defaults(func=_cmd_config_get)
 
     return parser
 

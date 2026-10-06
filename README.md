@@ -31,7 +31,16 @@ skogai link [link|check]       # install repo config as listed in links.txt
 skogai init                    # copy the shared defaults from dash-skogai into ./.skogai
 skogai update [--apply]        # move ./.skogai to another dash-skogai commit (dry run by default)
 skogai install [--apply]       # copy managed files from ./.skogai to their install paths (dry run by default)
+skogai config get [KEY] [--source] [--layer NAME]   # layered config; --source names the layer
 ```
+
+Config layers, lowest to highest: base (`config.defaults.json`), machine
+(`$SKOGAI_CONFIG_JSON_FILE` or `$XDG_CONFIG_HOME/skogai/config.json`), repo
+(`.skogai/config.json`), and each `.local.json` above its shared file. Objects
+merge. Arrays and scalars are replaced. Secret-looking keys are refused.
+
+Try it without touching anything real: `examples/demo.sh`. Decisions and open
+questions are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 `install` looks up each file's directory in order: the env variable named in
 `install.env`, then `$SKOGAI_CONFIG_EXAMPLE_DIR/<install.xdg>` (a sandbox config
@@ -82,18 +91,20 @@ src/skogai/links.py        manifest parsing and link/check logic
 src/skogai/source.py       read commits and files from a git URL (bare clone)
 src/skogai/store.py        init and update of the .skogai store, with pins
 src/skogai/install.py      install managed files to their install paths
+src/skogai/config.py       layers, merge, provenance
 examples/link.sh           the wrapper a repo copies next to its links.txt
+examples/                  sample dash-skogai, layered config files, demo.sh
 tests/                     python3 -m unittest discover -s tests
 ```
 
 ## Status
 
-- Done: `path`, `env --explain`, `env check`, `link`, `init`, `update`, `install`.
+- Beta: `path`, `env --explain`, `env check`, `link`, `init`, `update`, `install`,
+  `config get`. See docs/DECISIONS.md for what is open.
 - Open, from docs/ENV-HANDOVER.md, and not decided by the CLI:
   - The canonical skogai home name. `ROOT_VARS` in `areas.py` is a leaning
     (`SKOGAI_DIR`), so change it there once decided.
   - The fixed area list. Areas outside it are reported as warnings.
   - Whether `fish/config.fish` `set -gx` lines move to atuin or mise. The
     CLI reports mismatches; it does not rewrite config.
-- Not built yet: layered config lookup (`config get --source`) and the global `/skogai` store.
 - Deferred: migration tooling beyond `check`.

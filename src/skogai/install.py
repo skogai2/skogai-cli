@@ -83,6 +83,7 @@ def install(
             blocked += 1
             continue
         stored_id = blob_sha(stored)
+        stored_mode = os.stat(os.path.join(store, src)).st_mode & 0o777
         if pins.get(src) != stored_id:
             out(f"LOCAL-CHANGE  {src}: the store copy differs from its pin, left untouched")
             blocked += 1
@@ -96,13 +97,17 @@ def install(
             record = None
 
         existing = read_file(target)
+        mode_ok = existing is not None and os.stat(target).st_mode & 0o777 == stored_mode
         if existing is None:
             action = "INSTALL"
         elif blob_sha(existing) == stored_id:
-            # Already the right content. Only the record may need writing.
+            # Same content. Only the record or the mode may need fixing.
             if record and record["blob"] == stored_id:
-                continue
-            action = "RECORD"
+                if mode_ok:
+                    continue
+                action = "MODE"
+            else:
+                action = "RECORD"
         elif record and blob_sha(existing) == record["blob"]:
             action = "UPDATE"
         else:
@@ -113,7 +118,7 @@ def install(
         out(f"{action:<12} {target}  [{tier}]")
         changed += 1
         if apply:
-            write_file(target, stored)
+            write_file(target, stored, stored_mode)
             installs[src] = {"path": target, "blob": stored_id}
 
     if apply:
