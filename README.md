@@ -28,7 +28,15 @@ skogai path config fish        # e.g. ~/.config/skogai/fish, no trailing slash
 skogai env --explain           # each variable, and which tier resolved each area
 skogai env check               # naming, overlap and secret findings; exit 1 on error
 skogai link [link|check]       # install repo config as listed in links.txt
+skogai init                    # copy the shared defaults from dash-skogai into ./.skogai
+skogai update [--apply]        # move ./.skogai to another dash-skogai commit (dry run by default)
 ```
+
+`init` and `update` read dash-skogai from GitHub by default. `--source` takes a
+local path for testing, and `--ref` picks a commit. A managed file is replaced
+only if its local blob still matches the pin recorded at install. Otherwise it
+is reported as `LOCAL-CHANGE`, left alone, and the command exits 1. See
+docs/CONFIG.md.
 
 `skogai link` reads `links.txt` in the current directory (or `--manifest PATH`).
 Each line is `<repo path, relative to the manifest> <install path>`. It creates
@@ -62,17 +70,21 @@ src/skogai/env/resolve.py  resolution order
 src/skogai/env/inventory.py  reads env and atuin var names (never values)
 src/skogai/env/check.py    rule checks, returns findings
 src/skogai/links.py        manifest parsing and link/check logic
+src/skogai/source.py       read commits and files from a git URL (bare clone)
+src/skogai/store.py        init and update of the .skogai store, with pins
 examples/link.sh           the wrapper a repo copies next to its links.txt
 tests/                     python3 -m unittest discover -s tests
 ```
 
 ## Status
 
-- Done: `path`, `env --explain`, `env check`, `link`.
+- Done: `path`, `env --explain`, `env check`, `link`, `init`, `update`.
 - Open, from docs/ENV-HANDOVER.md, and not decided by the CLI:
   - The canonical skogai home name. `ROOT_VARS` in `areas.py` is a leaning
     (`SKOGAI_DIR`), so change it there once decided.
   - The fixed area list. Areas outside it are reported as warnings.
   - Whether `fish/config.fish` `set -gx` lines move to atuin or mise. The
     CLI reports mismatches; it does not rewrite config.
+- Not built yet: layered config lookup (`config get --source`), installing managed files
+  to their install path, and the global `/skogai` store.
 - Deferred: migration tooling beyond `check`.

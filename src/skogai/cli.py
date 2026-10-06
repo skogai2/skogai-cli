@@ -8,9 +8,10 @@ import re
 import sys
 from collections.abc import Sequence
 
-from skogai import links
+from skogai import links, store
 from skogai.env import AREAS, check, resolve
 from skogai.env.inventory import atuin_var_names, relevant
+from skogai.source import DASH_SKOGAI_URL, GitSource, SourceError
 
 COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
@@ -76,6 +77,32 @@ def _cmd_link(args: argparse.Namespace) -> int:
         return 2
 
 
+def _with_source(args: argparse.Namespace, fn) -> int:
+    try:
+        with GitSource(args.source) as source:
+            return fn(args.store, source, args.ref)
+    except (OSError, SourceError, store.StoreError, ValueError) as e:
+        print(f"skogai {args.command}: {e}", file=sys.stderr)
+        return 2
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    return _with_source(args, lambda s, src, ref: store.init(s, src, ref))
+
+
+def _cmd_update(args: argparse.Namespace) -> int:
+    return _with_source(
+        args, lambda s, src, ref: store.update(s, src, ref, apply=args.apply)
+    )
+
+
+def _add_store_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--store", default=".skogai", help="store directory (default: ./.skogai)")
+    p.add_argument("--source", default=DASH_SKOGAI_URL,
+                   help="git URL or local path of dash-skogai")
+    p.add_argument("--ref", default="HEAD", help="commit to read (default: the default branch)")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="skogai", description="skogai command line")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -98,6 +125,18 @@ def build_parser() -> argparse.ArgumentParser:
                         help="link (default) creates missing links; check only reports")
     p_link.add_argument("--manifest", default="links.txt", help="manifest file (default: links.txt)")
     p_link.set_defaults(func=_cmd_link)
+
+    p_init = sub.add_parser("init", help="copy the shared defaults from dash-skogai into a store")
+    _add_store_args(p_init)
+    p_init.set_defaults(func=_cmd_init)
+
+    p_update = sub.add_parser(
+        "update",
+        help="move a store to another dash-skogai commit; dry run unless --apply",
+    )
+    _add_store_args(p_update)
+    p_update.add_argument("--apply", action="store_true", help="write the changes")
+    p_update.set_defaults(func=_cmd_update)
 
     return parser
 
