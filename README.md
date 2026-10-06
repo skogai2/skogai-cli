@@ -34,7 +34,9 @@ skogai install [--apply]       # copy managed files from ./.skogai to their inst
 ```
 
 `install` looks up each file's directory in order: the env variable named in
-`install.env`, then `$XDG_CONFIG_HOME/<install.xdg>`, then `install.default`. It
+`install.env`, then `$SKOGAI_CONFIG_EXAMPLE_DIR/<install.xdg>` (a sandbox config
+home, for tests and dry runs), then `$XDG_CONFIG_HOME/<install.xdg>`, then
+`install.default`. It
 copies the file and records what it wrote in `installs.json`. It never overwrites
 a file that differs from both the store copy and its own record. That is
 reported as `LOCAL-CHANGE` and the command exits 1.

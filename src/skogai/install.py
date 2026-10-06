@@ -7,8 +7,10 @@ overwritten. Those cases are reported as LOCAL-CHANGE.
 
 Install directory lookup, most specific first (docs/CONFIG.md):
   1. the env variable named in install.env, if set
-  2. $XDG_CONFIG_HOME/<install.xdg>, if XDG_CONFIG_HOME is set
-  3. install.default, with ~ expanded
+  2. $SKOGAI_CONFIG_EXAMPLE_DIR/<install.xdg>, if set: a sandbox config home,
+     for tests and dry runs that must not touch the real config
+  3. $XDG_CONFIG_HOME/<install.xdg>, if XDG_CONFIG_HOME is set
+  4. install.default, with ~ expanded
 """
 
 from __future__ import annotations
@@ -37,6 +39,9 @@ def install_dir(spec: dict, env: Mapping[str, str]) -> tuple[str, str]:
     """The directory a managed file installs into, and the tier that chose it."""
     if spec.get("env") and env.get(spec["env"]):
         return os.path.normpath(os.path.expanduser(env[spec["env"]])), "env"
+    if env.get("SKOGAI_CONFIG_EXAMPLE_DIR"):
+        path = os.path.join(env["SKOGAI_CONFIG_EXAMPLE_DIR"], spec.get("xdg", ""))
+        return os.path.normpath(path), "example"
     if spec.get("xdg") and env.get("XDG_CONFIG_HOME"):
         path = os.path.join(env["XDG_CONFIG_HOME"], spec["xdg"])
         return os.path.normpath(path), "xdg"

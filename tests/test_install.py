@@ -68,6 +68,21 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(install.install_dir(spec, {"XDG_CONFIG_HOME": "/x"}), ("/x/fish", "xdg"))
         self.assertEqual(install.install_dir(spec, {}), ("/d", "default"))
 
+    def test_example_dir_is_a_sandbox_config_home(self):
+        spec = {"env": "X_DIR", "xdg": "fish", "default": "/d"}
+        env = {"SKOGAI_CONFIG_EXAMPLE_DIR": "/sandbox", "XDG_CONFIG_HOME": "/x"}
+        self.assertEqual(install.install_dir(spec, env), ("/sandbox/fish", "example"))
+        # A specific variable still wins over the sandbox.
+        env["X_DIR"] = "/specific"
+        self.assertEqual(install.install_dir(spec, env), ("/specific", "env"))
+
+    def test_example_dir_keeps_the_real_config_untouched(self):
+        sandbox = os.path.join(self.root, "sandbox")
+        self.env = {"SKOGAI_CONFIG_EXAMPLE_DIR": sandbox}
+        self.assertEqual(self.run_install(apply=True), 0)
+        self.assertTrue(os.path.exists(os.path.join(sandbox, "fish", "config.fish")))
+        self.assertFalse(os.path.exists(self.target))
+
     def test_dry_run_writes_nothing(self):
         self.assertEqual(self.run_install(), 0)
         self.assertTrue(any(line.startswith("INSTALL") for line in self.lines))

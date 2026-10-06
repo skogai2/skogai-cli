@@ -72,6 +72,12 @@ never moves to a moving "latest" silently.
   The rest of `config/fish/` (`conf.d`, `functions`, `completions`) stays in
   `config` for now.
 
+## Sandbox
+
+`SKOGAI_CONFIG_EXAMPLE_DIR` acts as a sandbox config home. With it set, install
+paths go under that directory instead of `XDG_CONFIG_HOME`, so tests and dry runs
+never touch the real config. A variable named in `install.env` still wins.
+
 ## Status
 
 Built: `init`, `update`, `install`. Not built: layered config lookup
