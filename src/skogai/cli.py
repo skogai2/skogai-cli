@@ -8,7 +8,7 @@ import re
 import sys
 from collections.abc import Sequence
 
-from skogai import links, store
+from skogai import install, links, store
 from skogai.env import AREAS, check, resolve
 from skogai.env.inventory import atuin_var_names, relevant
 from skogai.source import DASH_SKOGAI_URL, GitSource, SourceError
@@ -96,6 +96,14 @@ def _cmd_update(args: argparse.Namespace) -> int:
     )
 
 
+def _cmd_install(args: argparse.Namespace) -> int:
+    try:
+        return install.install(args.store, apply=args.apply)
+    except (OSError, store.StoreError, ValueError) as e:
+        print(f"skogai install: {e}", file=sys.stderr)
+        return 2
+
+
 def _add_store_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--store", default=".skogai", help="store directory (default: ./.skogai)")
     p.add_argument("--source", default=DASH_SKOGAI_URL,
@@ -137,6 +145,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_store_args(p_update)
     p_update.add_argument("--apply", action="store_true", help="write the changes")
     p_update.set_defaults(func=_cmd_update)
+
+    p_install = sub.add_parser(
+        "install",
+        help="copy managed files from the store to their install paths; dry run unless --apply",
+    )
+    p_install.add_argument("--store", default=".skogai", help="store directory (default: ./.skogai)")
+    p_install.add_argument("--apply", action="store_true", help="write the changes")
+    p_install.set_defaults(func=_cmd_install)
 
     return parser
 

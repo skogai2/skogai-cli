@@ -40,8 +40,18 @@ def _safe_path(path: str) -> str:
     return path
 
 
-def parse_defaults(raw: bytes) -> list[str]:
-    """The managed file sources listed in config.defaults.json."""
+def _check_install(src: str, install) -> None:
+    if not isinstance(install, dict) or not isinstance(install.get("default"), str):
+        raise StoreError(f"{src}: install needs a \"default\" path")
+    for key in ("env", "xdg", "default"):
+        if key in install and not isinstance(install[key], str):
+            raise StoreError(f"{src}: install.{key} must be a string")
+    if "xdg" in install:
+        _safe_path(install["xdg"])
+
+
+def parse_defaults(raw: bytes) -> dict[str, dict]:
+    """Managed files from config.defaults.json, keyed by source path."""
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
@@ -49,33 +59,36 @@ def parse_defaults(raw: bytes) -> list[str]:
     files = data.get("files") if isinstance(data, dict) else None
     if not isinstance(files, list):
         raise StoreError('config.defaults.json needs a "files" list')
-    sources = []
+    entries: dict[str, dict] = {}
     for entry in files:
         if not isinstance(entry, dict):
             raise StoreError("each entry in files must be an object")
-        sources.append(_safe_path(entry.get("source")))
-    return sources
+        src = _safe_path(entry.get("source"))
+        if entry.get("install") is not None:
+            _check_install(src, entry["install"])
+        entries[src] = entry
+    return entries
 
 
-def _read(path: str) -> bytes | None:
+def read_file(path: str) -> bytes | None:
     if not os.path.exists(path):
         return None
     with open(path, "rb") as f:
         return f.read()
 
 
-def _write(path: str, data: bytes) -> None:
+def write_file(path: str, data: bytes) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "wb") as f:
         f.write(data)
 
 
-def _write_json(path: str, data: dict) -> None:
-    _write(path, (json.dumps(data, indent=2) + "\n").encode())
+def write_json(path: str, data: dict) -> None:
+    write_file(path, (json.dumps(data, indent=2) + "\n").encode())
 
 
-def _read_json(path: str) -> dict:
-    raw = _read(path)
+def read_json(path: str) -> dict:
+    raw = read_file(path)
     if raw is None:
         raise StoreError(f"{path} not found; run skogai init first")
     return json.loads(raw)
@@ -92,13 +105,13 @@ def init(store: str, source: GitSource, ref: str = "HEAD", out: Out = print) -> 
     pins = {}
     for src in sources:
         data = source.read(sha, src)
-        _write(os.path.join(store, src), data)
+        write_file(os.path.join(store, src), data)
         pins[src] = blob_sha(data)
         out(f"copied       {src}")
 
-    _write(os.path.join(store, DEFAULTS_NAME), defaults_raw)
-    _write_json(os.path.join(store, PINS_NAME), {"files": pins})
-    _write_json(os.path.join(store, CONFIG_NAME), {"base": {"url": source.url, "sha": sha}})
+    write_file(os.path.join(store, DEFAULTS_NAME), defaults_raw)
+    write_json(os.path.join(store, PINS_NAME), {"files": pins})
+    write_json(os.path.join(store, CONFIG_NAME), {"base": {"url": source.url, "sha": sha}})
     out(f"initialised {store} at {sha[:12]}")
     return 0
 
@@ -123,9 +136,9 @@ def update(
 
     Returns 0 when nothing is blocked, 1 when a local change blocks something.
     """
-    base = _read_json(os.path.join(store, CONFIG_NAME))
+    base = read_json(os.path.join(store, CONFIG_NAME))
     pins_path = os.path.join(store, PINS_NAME)
-    pins: dict[str, str] = dict(_read_json(pins_path).get("files", {}))
+    pins: dict[str, str] = dict(read_json(pins_path).get("files", {}))
 
     sha = source.resolve(ref)
     defaults_raw = source.read(sha, DEFAULTS_PATH)
@@ -136,7 +149,7 @@ def update(
     changed = 0
     for src in sorted(set(pins) | wanted_set):
         local_path = os.path.join(store, src)
-        local = _read(local_path)
+        local = read_file(local_path)
         local_id = blob_sha(local) if local is not None else None
         pinned = pins.get(src)
 
@@ -151,7 +164,7 @@ def update(
             out(f"ADD          {src}")
             changed += 1
             if apply:
-                _write(local_path, data)
+                write_file(local_path, data)
                 pins[src] = blob_sha(data)
             continue
 
@@ -173,14 +186,14 @@ def update(
             out(f"  {line}")
         changed += 1
         if apply:
-            _write(local_path, data)
+            write_file(local_path, data)
             pins[src] = blob_sha(data)
 
     if apply:
-        _write_json(pins_path, {"files": pins})
+        write_json(pins_path, {"files": pins})
         if blocked == 0:
-            _write(os.path.join(store, DEFAULTS_NAME), defaults_raw)
-            _write_json(
+            write_file(os.path.join(store, DEFAULTS_NAME), defaults_raw)
+            write_json(
                 os.path.join(store, CONFIG_NAME),
                 {"base": {"url": source.url, "sha": sha}},
             )

@@ -72,7 +72,7 @@ never moves to a moving "latest" silently.
   The rest of `config/fish/` (`conf.d`, `functions`, `completions`) stays in
   `config` for now.
 
-## Open points
+## Status
 
-None left for the design. Implementation (`init`, `update`, and installing
-`fish/config.fish`) is not built yet.
+Built: `init`, `update`, `install`. Not built: layered config lookup
+(`config get --source`) and the global `/skogai` store.
