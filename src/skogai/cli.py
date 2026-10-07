@@ -144,7 +144,7 @@ def _add_store_args(p: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="skogai", description="skogai command line")
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(title="Commands", dest="command", required=True)
 
     p_path = sub.add_parser(
         "path",
@@ -187,7 +187,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_install.set_defaults(func=_cmd_install)
 
     p_config = sub.add_parser("config", help="read the layered config")
-    config_sub = p_config.add_subparsers(dest="config_command", required=True)
+    config_sub = p_config.add_subparsers(title="Commands", dest="config_command", required=True)
     p_get = config_sub.add_parser(
         "get",
         help="print a value, or every value when no key is given",
