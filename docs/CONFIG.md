@@ -77,6 +77,8 @@ never moves to a moving "latest" silently.
 `SKOGAI_CONFIG_EXAMPLE_DIR` acts as a sandbox config home. With it set, install
 paths go under that directory instead of `XDG_CONFIG_HOME`, so tests and dry runs
 never touch the real config. A variable named in `install.env` still wins.
+On a live machine, the trial area is `~/.config/example` (D11 in DECISIONS.md).
+Automated tests and the demo use a temporary directory instead.
 
 ## Status
 

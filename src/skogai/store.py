@@ -51,8 +51,17 @@ def _check_install(src: str, install) -> None:
         _safe_path(install["xdg"])
 
 
+def store_path(entry: dict) -> str:
+    """Where a managed file lands in the store: its "store" key, else its source path."""
+    return entry.get("store", entry["source"])
+
+
 def parse_defaults(raw: bytes) -> dict[str, dict]:
-    """Managed files from config.defaults.json, keyed by source path."""
+    """Managed files from config.defaults.json, keyed by source path.
+
+    Each entry has a "source" in dash-skogai and may name a "store" path in the
+    repo's store (D25). Two entries may not share a store path.
+    """
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
@@ -61,13 +70,20 @@ def parse_defaults(raw: bytes) -> dict[str, dict]:
     if not isinstance(files, list):
         raise StoreError('config.defaults.json needs a "files" list')
     entries: dict[str, dict] = {}
+    dests: set[str] = set()
     for entry in files:
         if not isinstance(entry, dict):
             raise StoreError("each entry in files must be an object")
         src = _safe_path(entry.get("source"))
+        dest = _safe_path(store_path(entry))
+        if src in entries:
+            raise StoreError(f"{src} is listed more than once")
+        if dest in dests:
+            raise StoreError(f"two managed files would be stored at {dest}")
         if entry.get("install") is not None:
             _check_install(src, entry["install"])
         entries[src] = entry
+        dests.add(dest)
     return entries
 
 
@@ -96,28 +112,49 @@ def read_json(path: str) -> dict:
     return json.loads(raw)
 
 
-def init(store: str, source: GitSource, ref: str = "HEAD", out: Out = print) -> int:
+def init(
+    store: str,
+    source: GitSource,
+    ref: str = "HEAD",
+    apply: bool = False,
+    out: Out = print,
+) -> int:
+    """Show what a first pin would create. With apply, write the store.
+
+    ref defaults to the source's HEAD (D24). The dry run names that commit, so
+    the pin is something the user saw before it was written.
+    """
     if os.path.exists(os.path.join(store, CONFIG_NAME)):
         raise StoreError(f"{store} is already initialised; use skogai update")
 
-    # TODO: ref defaults to HEAD, so a first install pins whatever is on GitHub
-    # at that moment. Pass an explicit --ref for a first pin (docs/DECISIONS.md).
     sha = source.resolve(ref)
     defaults_raw = source.read(sha, DEFAULTS_PATH)
     sources = parse_defaults(defaults_raw)
 
+    if not apply:
+        # Read every managed file now, so a dry run fails where apply would.
+        for src, entry in sources.items():
+            source.read(sha, src)
+            source.mode(sha, src)
+            out(f"ADD          {store_path(entry)}")
+        out(f"target {sha[:12]}: {source.subject(sha)}")
+        out(f"{len(sources)} change(s), dry run, pass --apply to write")
+        return 0
+
     pins = {}
-    for src in sources:
+    for src, entry in sources.items():
+        dest = store_path(entry)
         data = source.read(sha, src)
-        write_file(os.path.join(store, src), data, source.mode(sha, src))
-        pins[src] = blob_sha(data)
-        out(f"copied       {src}")
+        write_file(os.path.join(store, dest), data, source.mode(sha, src))
+        pins[dest] = blob_sha(data)
+        out(f"copied       {dest}")
 
     write_file(os.path.join(store, DEFAULTS_NAME), defaults_raw)
     write_json(os.path.join(store, PINS_NAME), {"files": pins})
     write_json(os.path.join(store, CONFIG_NAME), {"base": {"url": source.url, "sha": sha}})
-    # Machine-local files: never committed.
-    write_file(os.path.join(store, ".gitignore"), GITIGNORE.encode())
+    # Machine-local files: never committed. A managed .gitignore wins over the default.
+    if ".gitignore" not in pins:
+        write_file(os.path.join(store, ".gitignore"), GITIGNORE.encode())
     out(f"initialised {store} at {sha[:12]}")
     return 0
 
@@ -148,7 +185,8 @@ def update(
 
     sha = source.resolve(ref)
     defaults_raw = source.read(sha, DEFAULTS_PATH)
-    wanted = parse_defaults(defaults_raw)
+    # Keyed by store path, to match the pins. Each entry keeps its source for reading.
+    wanted = {store_path(e): e for e in parse_defaults(defaults_raw).values()}
     wanted_set = set(wanted)
 
     blocked = 0
@@ -166,11 +204,12 @@ def update(
                     blocked += 1
                 continue
             # Not pinned, not on disk: a new managed file.
-            data = source.read(sha, src)
+            origin = wanted[src]["source"]
+            data = source.read(sha, origin)
             out(f"ADD          {src}")
             changed += 1
             if apply:
-                write_file(local_path, data, source.mode(sha, src))
+                write_file(local_path, data, source.mode(sha, origin))
                 pins[src] = blob_sha(data)
             continue
 
@@ -183,8 +222,9 @@ def update(
             out(f"REMOVED      {src}: no longer in dash-skogai, left in place")
             continue
 
-        data = source.read(sha, src)
-        target_mode = source.mode(sha, src)
+        origin = wanted[src]["source"]
+        data = source.read(sha, origin)
+        target_mode = source.mode(sha, origin)
         if blob_sha(data) == pinned:
             if os.stat(local_path).st_mode & 0o777 != target_mode:
                 out(f"MODE         {src}: executable bit differs from dash-skogai")

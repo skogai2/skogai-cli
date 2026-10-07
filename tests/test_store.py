@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from skogai import store
-from skogai.source import GitSource, blob_sha
+from skogai.source import GitSource, SourceError, blob_sha
 
 
 def git(cwd, *args):
@@ -55,7 +55,7 @@ class StoreTests(unittest.TestCase):
 
     def init(self):
         with self.src() as s:
-            return store.init(self.store, s, out=self.lines.append)
+            return store.init(self.store, s, apply=True, out=self.lines.append)
 
     def update(self, apply=False, ref="HEAD"):
         with self.src() as s:
@@ -80,6 +80,22 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.base_sha(), self.sha1)
         self.assertEqual(self.pins(), {"fish/config.fish": blob_sha(b"set -g fish_greeting\n")})
         self.assertTrue(os.path.exists(os.path.join(self.store, "config.defaults.json")))
+
+    def test_init_dry_run_shows_the_pin_and_writes_nothing(self):
+        with self.src() as s:
+            self.assertEqual(store.init(self.store, s, out=self.lines.append), 0)
+        self.assertFalse(os.path.exists(self.store))
+        self.assertIn("ADD          fish/config.fish", self.lines)
+        self.assertTrue(any(self.sha1[:12] in line for line in self.lines))
+        self.assertTrue(any("dry run" in line for line in self.lines))
+
+    def test_init_dry_run_reports_a_missing_managed_file(self):
+        self.write_dash("config.defaults.json", '{"files": [{"source": "missing.txt"}]}\n')
+        commit_all(self.dash, "points at a missing file")
+        with self.src() as s:
+            with self.assertRaises(SourceError):
+                store.init(self.store, s, out=self.lines.append)
+        self.assertFalse(os.path.exists(self.store))
 
     def test_init_refuses_to_overwrite(self):
         self.init()
@@ -161,7 +177,7 @@ class StoreTests(unittest.TestCase):
         self.write_dash("config.defaults.json", '{"files": [{"source": "scripts/run.sh"}]}\n')
         commit_all(self.dash, "exec")
         with self.src() as s:
-            store.init(self.store, s, out=lambda _: None)
+            store.init(self.store, s, apply=True, out=lambda _: None)
         local = os.path.join(self.store, "scripts/run.sh")
         self.assertEqual(os.stat(local).st_mode & 0o777, 0o755)
 
@@ -170,6 +186,47 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.update(apply=True, ref=sha2), 0)
         self.assertEqual(os.stat(local).st_mode & 0o777, 0o644)
         self.assertTrue(any(line.startswith("MODE") for line in self.lines))
+
+    def test_store_key_places_the_file_and_pins_it_by_store_path(self):
+        self.write_dash("default/gitignore", "config.local.json\nmy-local\n")
+        self.write_dash("config.defaults.json", json.dumps(
+            {"files": [{"source": "default/gitignore", "store": ".gitignore"}]}))
+        commit_all(self.dash, "store key")
+        self.assertEqual(self.init(), 0)
+        self.assertEqual(self.read(os.path.join(self.store, ".gitignore")), "config.local.json\nmy-local\n")
+        self.assertFalse(os.path.exists(os.path.join(self.store, "default")))
+        self.assertEqual(self.pins(), {".gitignore": blob_sha(b"config.local.json\nmy-local\n")})
+
+    def test_update_moves_a_store_keyed_file(self):
+        self.write_dash("default/gitignore", "a\n")
+        self.write_dash("config.defaults.json", json.dumps(
+            {"files": [{"source": "default/gitignore", "store": ".gitignore"}]}))
+        commit_all(self.dash, "v1")
+        self.init()
+        self.write_dash("default/gitignore", "a\nb\n")
+        sha2 = commit_all(self.dash, "v2")
+        self.assertEqual(self.update(apply=True, ref=sha2), 0)
+        self.assertEqual(self.read(os.path.join(self.store, ".gitignore")), "a\nb\n")
+        self.assertEqual(self.pins(), {".gitignore": blob_sha(b"a\nb\n")})
+
+    def test_two_files_cannot_share_a_store_path(self):
+        self.write_dash("default/a", "a\n")
+        self.write_dash("default/b", "b\n")
+        self.write_dash("config.defaults.json", json.dumps({"files": [
+            {"source": "default/a", "store": "same"},
+            {"source": "default/b", "store": "same"},
+        ]}))
+        commit_all(self.dash, "clash")
+        with self.assertRaises(store.StoreError):
+            self.init()
+
+    def test_store_path_must_stay_inside_the_store(self):
+        self.write_dash("default/a", "a\n")
+        self.write_dash("config.defaults.json", json.dumps(
+            {"files": [{"source": "default/a", "store": "../escape"}]}))
+        commit_all(self.dash, "escape")
+        with self.assertRaises(store.StoreError):
+            self.init()
 
     def test_store_gitignores_machine_local_files(self):
         self.init()

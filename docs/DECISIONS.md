@@ -77,9 +77,16 @@ Most specific first:
 variable (`SKOGAI_CONFIG_FISH_DIR`) can always override a single file.
 *Code:* `install.py` (`install_dir`).
 
-### D11. `SKOGAI_CONFIG_EXAMPLE_DIR` is a sandbox config home. Status: Decided
-With it set, installs go under that directory instead of the real config. Tests
-and demos use it so they never touch the real config.
+### D11. The example area `~/.config/example` is the trial install target. Status: Decided
+`SKOGAI_CONFIG_EXAMPLE_DIR` is a sandbox config home: with it set, installs go
+under that directory instead of the real config. On a live machine, trial installs
+point it at `~/.config/example`, so a trial `install --apply` never writes to a real
+config such as `~/.config/fish`.
+Automated tests and `examples/demo.sh` keep using a temporary directory, so they
+never write to `~/.config/example`.
+*Why:* a test run on a live setup must not be able to overwrite live config.
+*Caveat:* the decision does not change the code. Nothing here sets the variable
+for you; the trial command has to name it.
 *Gotcha:* if `install.env` names the same variable, the env tier wins and `xdg`
 is never used. The output says `[env]` in that case. The sample in `examples/`
 avoids this, but a shared config could hit it.
@@ -189,13 +196,42 @@ Today drift only shows up when `install` runs.
 ### O5. The global `/skogai` store. Status: Open
 Not built. Needs a decision on which scope it feeds: machine, or repo overrides.
 
-## TODO
+## Init
 
-### T1. Pin an explicit `--ref` on the first `init`. Status: TODO
-`init` uses `HEAD` by default, so a first install pins whatever GitHub has at
-that moment. The code has a comment at this point. Require `--ref` the first
-time, or print the SHA and ask for confirmation.
-*Code:* `store.py` (`init`, comment).
+### D24. `init` defaults to the remote's HEAD, shows it, and writes only with `--apply`. Status: Decided
+With no `--ref`, `init` resolves the source's HEAD to a commit SHA. For a URL source
+that is the remote's HEAD (the bare clone); for a local path it is that checkout's
+HEAD, which may include unpushed commits. The dry run prints the SHA, its subject,
+and each file it would create (`ADD` against nothing). Nothing is written until
+`--apply`, the same flag `update` and `install` use. `--ref` names a commit
+explicitly and skips the default.
+*Why:* the first init has no previous state to diff against, but it still has a
+"what would be created" list. The apply flag keeps one rule across all commands:
+dry run first, then write. A pin written by `init` is then a commit someone saw.
+*Code:* `store.py` (`init`), `source.py` (`subject`), `cli.py` (`--apply`). Tests:
+`tests/test_store.py` (dry run writes nothing, missing file fails the dry run).
+*Open:* a `--source` local path that is not pushed; the dry run should warn when
+the SHA is not on `origin`.
+
+## Managed files
+
+### D25. A managed entry names a `source`, and may name a `store` path. Status: Decided
+Each entry in `config.defaults.json` has a required `source`, its path in dash-skogai,
+which is the entry's identity. An optional `store` names where the file lands in
+`.skogai/`. Without it, the store path is the source path. `install` is optional and
+keeps the lookup tiers of D10. An absolute install path is not allowed: it would skip
+the env and sandbox tiers, and write to the real config even with
+`SKOGAI_CONFIG_EXAMPLE_DIR` set (D11).
+Pins, the store copies and `installs.json` are all keyed by store path. Two entries
+may not share a store path, and a store path must stay inside the store.
+*Why:* the source is where a file comes from, and the store path is where the repo keeps
+it. Adding `store` lets a shared file land at a fixed name, such as `.gitignore`.
+*Code:* `store.py` (`store_path`, `parse_defaults`, `init`, `update`), `install.py`.
+Tests: `tests/test_store.py`, `tests/test_install.py`.
+*Not yet:* dash-skogai has no `default/` folder. `init` still writes the `.gitignore`
+string from `store.py`, unless a managed entry stores a `.gitignore`.
+*Layout (agreed):* `default/` in dash-skogai holds files every repo gets. `installs.json`
+stays per clone in `.skogai/`, next to the local config (D19).
 
 ### T2. Tests against GitHub. Status: TODO
 All tests use local git repos. Nothing checks the real GitHub path. A single

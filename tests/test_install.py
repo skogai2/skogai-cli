@@ -37,7 +37,7 @@ class InstallTests(unittest.TestCase):
 
         self.store = os.path.join(self.root, "repo", ".skogai")
         with GitSource(self.dash) as s:
-            store.init(self.store, s, out=lambda _: None)
+            store.init(self.store, s, apply=True, out=lambda _: None)
 
         self.target_dir = os.path.join(self.root, "home", "fish")
         self.env = {"SKOGAI_CONFIG_FISH_DIR": self.target_dir}
@@ -168,8 +168,23 @@ class InstallTests(unittest.TestCase):
         self.commit("bad")
         with GitSource(self.dash) as s:
             with self.assertRaises(store.StoreError):
-                store.init(os.path.join(self.root, "other"), s, out=lambda _: None)
+                store.init(os.path.join(self.root, "other"), s, apply=True, out=lambda _: None)
 
+
+    def test_install_uses_the_store_path_and_its_basename(self):
+        self.write_dash("default/run-script", "#!/bin/sh\necho hi\n")
+        self.write_dash("config.defaults.json", json.dumps({"files": [
+            {"source": "default/run-script", "store": "bin/run.sh",
+             "install": {"xdg": "bin", "default": "/unused"}},
+        ]}))
+        self.commit("store key install")
+        store_dir = os.path.join(self.root, "keyed", ".skogai")
+        with GitSource(self.dash) as s:
+            store.init(store_dir, s, apply=True, out=lambda _: None)
+        self.assertTrue(os.path.exists(os.path.join(store_dir, "bin/run.sh")))
+        env = {"SKOGAI_CONFIG_EXAMPLE_DIR": os.path.join(self.root, "sandbox")}
+        self.assertEqual(install.install(store_dir, env=env, apply=True, out=lambda _: None), 0)
+        self.assertTrue(os.path.exists(os.path.join(self.root, "sandbox", "bin", "run.sh")))
 
     def test_executable_bit_survives_install(self):
         self.write_dash("scripts/run.sh", "#!/bin/sh\necho hi\n")
@@ -181,7 +196,7 @@ class InstallTests(unittest.TestCase):
         self.commit("with script")
         store_dir = os.path.join(self.root, "modes", ".skogai")
         with GitSource(self.dash) as s:
-            store.init(store_dir, s, out=lambda _: None)
+            store.init(store_dir, s, apply=True, out=lambda _: None)
         self.env = {"SKOGAI_CONFIG_EXAMPLE_DIR": os.path.join(self.root, "sandbox")}
         install.install(store_dir, env=self.env, apply=True, out=lambda _: None)
         target = os.path.join(self.root, "sandbox", "bin", "run.sh")

@@ -85,7 +85,9 @@ def _with_source(args: argparse.Namespace, fn) -> int:
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
-    return _with_source(args, lambda s, src, ref: store.init(s, src, ref))
+    return _with_source(
+        args, lambda s, src, ref: store.init(s, src, ref, apply=args.apply)
+    )
 
 
 def _cmd_update(args: argparse.Namespace) -> int:
@@ -166,8 +168,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_link.add_argument("--manifest", default="links.txt", help="manifest file (default: links.txt)")
     p_link.set_defaults(func=_cmd_link)
 
-    p_init = sub.add_parser("init", help="copy the shared defaults from dash-skogai into a store")
+    p_init = sub.add_parser(
+        "init",
+        help="copy the shared defaults from dash-skogai into a store, dry run unless --apply",
+    )
     _add_store_args(p_init)
+    p_init.add_argument("--apply", action="store_true", help="write the store")
     p_init.set_defaults(func=_cmd_init)
 
     p_update = sub.add_parser(

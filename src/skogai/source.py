@@ -59,6 +59,10 @@ class GitSource:
             raise SourceError(f"unknown ref '{ref}' in {self.url}") from None
         return out.decode().strip()
 
+    def subject(self, sha: str) -> str:
+        """The first line of the commit message at sha."""
+        return self._git("log", "-1", "--format=%s", sha).decode().strip()
+
     def mode(self, sha: str, path: str) -> int:
         """The file mode at commit sha: 0o755 if executable, else 0o644."""
         out = self._git("ls-tree", sha, "--", path).decode()

@@ -26,6 +26,7 @@ from skogai.store import (
     Out,
     StoreError,
     parse_defaults,
+    store_path,
     read_file,
     read_json,
     write_file,
@@ -71,29 +72,31 @@ def install(
 
     blocked = 0
     changed = 0
-    for src, entry in sorted(entries.items()):
+    for _, entry in sorted(entries.items()):
+        # Pins, the store copy and the install record are all keyed by store path.
+        dest = store_path(entry)
         spec = entry.get("install")
         if spec is None:
-            out(f"SKIP         {src}: no install path in config.defaults.json")
+            out(f"SKIP         {dest}: no install path in config.defaults.json")
             continue
 
-        stored = read_file(os.path.join(store, src))
+        stored = read_file(os.path.join(store, dest))
         if stored is None:
-            out(f"LOCAL-CHANGE  {src}: missing from the store, run skogai update")
+            out(f"LOCAL-CHANGE  {dest}: missing from the store, run skogai update")
             blocked += 1
             continue
         stored_id = blob_sha(stored)
-        stored_mode = os.stat(os.path.join(store, src)).st_mode & 0o777
-        if pins.get(src) != stored_id:
-            out(f"LOCAL-CHANGE  {src}: the store copy differs from its pin, left untouched")
+        stored_mode = os.stat(os.path.join(store, dest)).st_mode & 0o777
+        if pins.get(dest) != stored_id:
+            out(f"LOCAL-CHANGE  {dest}: the store copy differs from its pin, left untouched")
             blocked += 1
             continue
 
         directory, tier = install_dir(spec, env)
-        target = os.path.join(directory, posixpath.basename(src))
-        record = installs.get(src)
+        target = os.path.join(directory, posixpath.basename(dest))
+        record = installs.get(dest)
         if record and record["path"] != target:
-            out(f"NOTE         {src} was installed at {record['path']}, that copy is left in place")
+            out(f"NOTE         {dest} was installed at {record['path']}, that copy is left in place")
             record = None
 
         existing = read_file(target)
@@ -119,7 +122,7 @@ def install(
         changed += 1
         if apply:
             write_file(target, stored, stored_mode)
-            installs[src] = {"path": target, "blob": stored_id}
+            installs[dest] = {"path": target, "blob": stored_id}
 
     if apply:
         write_json(installs_path, installs)

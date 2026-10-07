@@ -17,7 +17,8 @@ git -C "$scratch/dash" -c user.name=demo -c user.email=demo@example.com commit -
 
 echo "== a repo that uses it"
 mkdir "$scratch/repo" && cd "$scratch/repo"
-skogai init --source "$scratch/dash" --store .skogai
+echo "-- dry run, shows the pin"; skogai init --source "$scratch/dash" --store .skogai
+skogai init --source "$scratch/dash" --store .skogai --apply
 
 echo "== install into a sandbox, never the real config"
 export SKOGAI_CONFIG_EXAMPLE_DIR="$scratch/sandbox"
