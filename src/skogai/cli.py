@@ -21,15 +21,12 @@ def _cmd_path(args: argparse.Namespace) -> int:
     if args.area is None and args.components:
         print("skogai path: components need an area", file=sys.stderr)
         return 2
-    if args.area is not None and args.area not in AREAS:
-        names = ", ".join(sorted(AREAS))
-        print(f"skogai path: unknown area '{args.area}' (areas: {names})", file=sys.stderr)
-        return 2
     for c in args.components:
         if not COMPONENT.match(c):
             print(f"skogai path: bad component '{c}'", file=sys.stderr)
             return 2
-    print(resolve(args.area, args.components).path)
+    area = args.area.upper() if args.area is not None else None
+    print(resolve(area, args.components).path)
     return 0
 
 
@@ -153,7 +150,8 @@ def build_parser() -> argparse.ArgumentParser:
         "path",
         help="print the resolved path for an area, without a trailing slash",
     )
-    p_path.add_argument("area", nargs="?", type=str.upper, help="e.g. config, claude")
+    p_path.add_argument("area", nargs="?", type=str.lower, choices=sorted(a.lower() for a in AREAS),
+                        help="area to print, e.g. config, claude")
     p_path.add_argument("components", nargs="*", help="e.g. fish")
     p_path.set_defaults(func=_cmd_path)
 
@@ -174,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_update = sub.add_parser(
         "update",
-        help="move a store to another dash-skogai commit; dry run unless --apply",
+        help="move a store to another dash-skogai commit, dry run unless --apply",
     )
     _add_store_args(p_update)
     p_update.add_argument("--apply", action="store_true", help="write the changes")
@@ -182,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_install = sub.add_parser(
         "install",
-        help="copy managed files from the store to their install paths; dry run unless --apply",
+        help="copy managed files from the store to their install paths, dry run unless --apply",
     )
     p_install.add_argument("--store", default=".skogai", help="store directory (default: ./.skogai)")
     p_install.add_argument("--apply", action="store_true", help="write the changes")
