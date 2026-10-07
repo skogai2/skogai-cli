@@ -228,8 +228,12 @@ may not share a store path, and a store path must stay inside the store.
 it. Adding `store` lets a shared file land at a fixed name, such as `.gitignore`.
 *Code:* `store.py` (`store_path`, `parse_defaults`, `init`, `update`), `install.py`.
 Tests: `tests/test_store.py`, `tests/test_install.py`.
-*Not yet:* dash-skogai has no `default/` folder. `init` still writes the `.gitignore`
-string from `store.py`, unless a managed entry stores a `.gitignore`.
+*Built in dash-skogai:* `default/gitignore` is stored as `.gitignore`, with
+`config.local.json` and `installs.json` listed in it.
+*Kept as a fallback:* `init` still writes the same two lines from `store.py` when no
+managed entry stores a `.gitignore`. A dash-skogai without the managed file would
+otherwise leave `installs.json` unignored. Remove the fallback once every dash-skogai
+has the managed file.
 *Layout (agreed):* `default/` in dash-skogai holds files every repo gets. `installs.json`
 stays per clone in `.skogai/`, next to the local config (D19).
 
