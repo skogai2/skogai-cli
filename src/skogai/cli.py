@@ -100,15 +100,35 @@ def _fmt(value) -> str:
     return value if isinstance(value, str) else json.dumps(value)
 
 
+def _as_json(hits: list[tuple[str, object, str]], key: str | None):
+    """Nest the leaves under key into one JSON value. A single leaf is its bare value."""
+    if key is not None and len(hits) == 1 and hits[0][0] == key:
+        return hits[0][1]
+    base = key + "." if key else ""
+    tree: dict = {}
+    for leaf, value, _ in hits:
+        parts = leaf[len(base):].split(".")
+        node = tree
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+        node[parts[-1]] = value
+    return tree
+
+
 def _cmd_config_get(args: argparse.Namespace) -> int:
+    if args.json and args.source:
+        print("skogai config: --json and --source cannot be used together", file=sys.stderr)
+        return 2
     try:
+        if not os.path.exists(os.path.join(args.store, store.DEFAULTS_NAME)):
+            raise store.StoreError(f"{args.store} has no {store.DEFAULTS_NAME}; run skogai init first")
         layers = config.load_layers(args.store, os.environ)
         if args.layer:
             value = config.layer_value(layers, args.layer, args.key)
             if value is None:
                 print(f"skogai config: {args.key} is not set in layer '{args.layer}'", file=sys.stderr)
                 return 1
-            print(_fmt(value))
+            print(json.dumps(value, indent=2) if args.json else _fmt(value))
             return 0
 
         hits = config.get(layers, args.key)
@@ -119,6 +139,9 @@ def _cmd_config_get(args: argparse.Namespace) -> int:
     if not hits:
         print(f"skogai config: {args.key or 'config'} is not set", file=sys.stderr)
         return 1
+    if args.json:
+        print(json.dumps(_as_json(hits, args.key), indent=2))
+        return 0
     single = len(hits) == 1 and hits[0][0] == args.key
     for key, value, layer in hits:
         tail = f"\t[{layer}]" if args.source else ""
@@ -203,6 +226,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_get.add_argument("--source", action="store_true", help="also print the layer that set it")
     p_get.add_argument("--layer", choices=config.LAYER_ORDER,
                        help="print the raw value from one layer instead")
+    p_get.add_argument("--json", action="store_true",
+                       help="print JSON, for scripts; cannot be combined with --source")
     p_get.set_defaults(func=_cmd_config_get)
 
     return parser

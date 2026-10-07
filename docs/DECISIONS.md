@@ -124,9 +124,14 @@ replaced whole, so a value always comes from exactly one layer.
 *Code:* `config.py` (`_deep_merge`, `sources`).
 
 ### D16. `config get --source` names the layer for every value. Status: Decided
-`skogai config get [KEY] [--source] [--layer NAME]`. `--layer` shows the raw
+`skogai config get [KEY] [--source] [--layer NAME] [--json]`. `--layer` shows the raw
 value in one layer. Without `--source`, a single value prints bare, for scripts.
-*Code:* `cli.py` (`_cmd_config_get`), `config.py` (`get`, `sources`, `layer_value`).
+`--json` prints JSON for scripts: the merged values nested under KEY, or the bare value
+when KEY is a leaf. It cannot be combined with `--source`, which prints text.
+`--store` names the `.skogai` directory itself. A store with no `config.defaults.json`
+is an error (exit 2), not an empty config, the same as `install` and `update`.
+*Code:* `cli.py` (`_cmd_config_get`, `_as_json`), `config.py` (`get`, `sources`,
+`layer_value`). Tests: `tests/test_cli_config.py`.
 
 ### D17. Secrets never go in config files. Status: Decided
 Any key that ends in `TOKEN`, `KEY`, `PASSWORD` or `SECRET` is refused at load,
