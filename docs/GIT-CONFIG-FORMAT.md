@@ -80,3 +80,45 @@ git config -f "$d/top.conf" --includes --show-origin --get-all a.k
 Expect: `a.k` lists `from-base` then `from-top` (plain `--get` would return
 just `from-top`, last wins), and `--show-origin` names `base.conf` and
 `top.conf` as the respective origins.
+
+## `hasconfig:` conditional includes - works, but the relative path lies
+
+`[includeIf "hasconfig:remote.*.url:<glob>"]` (git >= 2.36) fires when a
+repo's remote URL matches a glob - e.g. auto-loading config for any repo
+under a given GitHub org. The condition itself works correctly. The
+`path =` on that same stanza does not do what it looks like it does:
+
+- **In a repo's own `.git/config`:** a relative path resolves against the
+  directory of the *including file*, i.e. `.git/`, not the worktree root.
+  `path = .skogai/config/gitconfig` silently resolves to
+  `<repo>/.git/.skogai/config/gitconfig` - almost never what was written
+  (`<repo>/.skogai/config/gitconfig`). No error either way; it just quietly
+  finds nothing. Needs `../.skogai/config/gitconfig` or an absolute path.
+- **In the global `~/.gitconfig`** (the natural home for a `hasconfig:`
+  conditional - "apply this whenever I'm in a repo matching this remote"):
+  a relative path resolves against `$HOME`, always. Verified with two
+  repos, both matching the same glob, same relative path in the global
+  config - both loaded the identical `$HOME/.skogai/config/gitconfig`, not
+  their own per-repo files. There is no variable for "the repo that
+  matched" - `path` is a static string regardless of what the condition
+  matched against.
+- **Consequence:** `hasconfig:` can give you one shared file applied to
+  every repo matching a remote pattern (fine for a machine-wide policy),
+  but it cannot discover and load *that specific repo's own* file with
+  zero per-repo setup. Getting a genuinely per-repo file still needs
+  something to write a repo-relative (or absolute) include line into that
+  repo's own `.git/config` once - the same shape of work `skogai
+  link`/`skogai init` already do, not something `includeIf` replaces.
+
+### Verify
+```
+# condition fires correctly (real remote, real glob)
+d=$(mktemp -d) && git init -q "$d" && git -C "$d" remote add origin https://github.com/skogai2/skogai-cli
+mkdir -p "$d/.skogai/config" && printf '[marker]\n\thit = yes\n' > "$d/.skogai/config/gitconfig"
+printf '[includeIf "hasconfig:remote.*.url:https://github.com/skogai2/**"]\n\tpath = %s/.skogai/config/gitconfig\n' "$d" >> "$d/.git/config"
+git -C "$d" config --get marker.hit   # => yes, with the absolute path
+
+# same stanza, relative path, inside .git/config: silently empty
+printf '[includeIf "hasconfig:remote.*.url:https://github.com/skogai2/**"]\n\tpath = .skogai/config/gitconfig\n' >> "$d/.git/config"
+git -C "$d" config --get-all marker.hit   # second line contributes nothing
+```
